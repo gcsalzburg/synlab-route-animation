@@ -100,15 +100,15 @@
             // ======== Configuration ========
             const ANIMATION_DURATION = 30; // 30 seconds = 24 hours in simulation time
             const TOTAL_HOURS = 24;
-            const ANIMATION_START_TIME = 5; // Animation starts at 05:00
+            const ANIMATION_START_TIME = 6; // Animation starts at 05:00
             const ANIMATION_END_TIME = 22; // Animation ends at 22:00
             const START_HOUR = 7; // First marker leaves at 07:00
             const MARKER_COUNT = 10;
-            const MARKER_TRAVEL_TIME = 45; // minutes to travel the whole route
+            const MARKER_TRAVEL_TIME = 60; // minutes to travel the whole route
             const PAUSE_DURATION = 15; // minutes pause at pause points
             const DEPARTURE_INTERVAL = 2; // hours between markers
-            const FIRST_PAUSE_POSITION = 0.33; // First pause at 33% of the route
-            const SECOND_PAUSE_POSITION = 0.66; // Second pause at 66% of the route
+            const FIRST_PAUSE_POSITION = 0.439; // First pause at 33% of the route
+            const SECOND_PAUSE_POSITION = 0.7; // Second pause at 66% of the route
             const NIGHT_START_HOUR = 18; // 6pm - start of night
             const NIGHT_END_HOUR = 6; // 6am - end of night
             const SUNRISE_SUNSET_DURATION = 30; // Duration of sunrise/sunset transition in minutes
@@ -295,10 +295,12 @@
                 // Time at which marker finishes second pause
                 const afterSecondPauseTime = secondPauseTime + PAUSE_TIME_FRACTION;
                 
-                // Calculate path position based on time and pauses
-                if (timeFraction < firstPauseTime) {
+               // Calculate path position based on time and pauses
+					if (timeFraction < firstPauseTime) {
                     // Before first pause - normal progress
-                    return (timeFraction / TRAVEL_TIME_FRACTION) * FIRST_PAUSE_POSITION;
+                    // Calculate progress along the first segment (0 to FIRST_PAUSE_POSITION)
+                    const segmentProgress = timeFraction / (TRAVEL_TIME_FRACTION * FIRST_PAUSE_POSITION);
+                    return FIRST_PAUSE_POSITION * segmentProgress;
                 } else if (timeFraction < afterFirstPauseTime) {
                     // During first pause - remain at pause position
                     return FIRST_PAUSE_POSITION;
