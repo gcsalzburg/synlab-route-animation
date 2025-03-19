@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>24 Hour Animation</title>
+    <title>24 Hour Animation with Multiple Markers</title>
     <style>
         body {
             margin: 0;
@@ -13,12 +13,42 @@
             align-items: center;
             min-height: 100vh;
             background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
         }
         .animation-container {
             width: 100%;
             max-width: 1400px;
             height: auto;
             box-shadow: 0 0 20px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        .speed-controls {
+            position: absolute;
+            top: 100px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 1000; /* Increased z-index to ensure it's on top */
+        }
+        .speed-button {
+            width: 60px;
+            padding: 6px;
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        .speed-button:hover {
+            background-color: rgba(0,0,0,0.9);
+        }
+        .speed-button.selected {
+            background-color: #005EB8;
+            border-color: white;
         }
     </style>
 </head>
@@ -29,8 +59,10 @@
                 <!-- Define a path for the animation -->
                 <path id="routePath" d="M100,500 C200,300 400,300 500,500 S800,700 900,500 S1200,300 1300,500" fill="none" stroke="none" />
                 
-                <!-- Define a marker for the moving object -->
-                <circle id="movingObject" cx="0" cy="0" r="10" fill="red" />
+                <!-- Marker template -->
+                <g id="markerTemplate">
+                    <circle cx="0" cy="0" r="8.5" fill="#005EB8" stroke="white" stroke-width="2"/>
+                </g>
             </defs>
             
             <!-- Background image -->
@@ -39,99 +71,379 @@
             <!-- Path visualization (visible to show route) -->
             <path id="visualPath" d="M100,500 C200,300 400,300 500,500 S800,700 900,500 S1200,300 1300,500" fill="none" stroke="#16A34A" stroke-width="4" opacity="1" />
             
-            <!-- Clock display in top right corner -->
-            <rect x="1250" y="30" width="120" height="60" rx="10" fill="rgba(0,0,0,0.7)" />
-            <text id="clockDisplay" x="1310" y="70" font-family="Arial" font-size="32" fill="white" text-anchor="middle">00:00</text>
+            <!-- Night overlay for day/night effect -->
+            <rect id="nightOverlay" x="0" y="0" width="1400" height="1000" fill="rgba(0,0,0,0.75)" opacity="0" />
             
-            <!-- Moving object that will animate along the path -->
-            <circle id="animatedObject" cx="0" cy="0" r="8.5" fill="#005EB8" stroke="white" stroke-width="2">
-                <animateMotion id="moveAnimation" 
-                              dur="10s" 
-                              repeatCount="indefinite" 
-                              begin="0s"
-                              path="M100,500 C200,300 400,300 500,500 S800,700 900,500 S1200,300 1300,500" />
-            </circle>
-            <!-- Transparent PNG overlay on top of everything -->
+            <!-- Clock display in top right corner -->
+            <rect x="1230" y="30" width="140" height="60" rx="10" fill="rgba(0,0,0,0.7)" />
+            <text id="clockDisplay" x="1300" y="70" font-family="Arial" font-size="32" fill="white" text-anchor="middle">00:00 am</text>
+            
+            <!-- Container for all marker dots -->
+            <g id="markers"></g>
+            
+            <!-- Transparent PNG overlay on top of everything (above night overlay) -->
             <image href="assets/markers.png" id="markersOverlay" width="1400" height="1000" x="0" y="0" preserveAspectRatio="xMidYMid slice" />
         </svg>
+        
+        <!-- Speed control buttons - now positioned with higher z-index -->
+        <div class="speed-controls">
+            <div class="speed-button" data-speed="1">1x</div>
+            <div class="speed-button selected" data-speed="5">5x</div>
+            <div class="speed-button" data-speed="10">10x</div>
+            <div class="speed-button" data-speed="50">50x</div>
+            <div class="speed-button" data-speed="100">100x</div>
+        </div>
     </div>
 
     <script>
-        // Update markers overlay with the actual image
-        document.getElementById('markersOverlay').setAttribute('href', 'assets/markers.png');
-        
-        // Try to load the external route SVG file
-        function loadRoute() {
-            try {
-                const xhr = new XMLHttpRequest();
-                xhr.open('GET', 'assets/route.svg', true);
-                xhr.onload = function() {
-                    if (xhr.status === 200) {
-                        // Extract path data from loaded SVG
-                        const parser = new DOMParser();
-                        const svgDoc = parser.parseFromString(xhr.responseText, 'image/svg+xml');
-                        const paths = svgDoc.querySelectorAll('path');
-                        
-                        if (paths.length > 0) {
-                            // Use the first path found
-                            const pathData = paths[0].getAttribute('d');
-                            document.getElementById('routePath').setAttribute('d', pathData);
-                            document.getElementById('visualPath').setAttribute('d', pathData);
-                            
-                            // Update animation path
-                            const animatedObject = document.getElementById('animatedObject');
-                            const animateMotion = animatedObject.querySelector('animateMotion');
-                            animateMotion.setAttribute('path', pathData);
-                            
-                            // Restart animation after loading the path
-                            animateMotion.beginElement();
-                        }
-                    }
-                };
-                xhr.send();
-            } catch (e) {
-                console.log('Error loading route:', e);
-                // Animation will continue with default path
-            }
-        }
-        
-        // Update clock function
-        function startClock() {
-            const clockElement = document.getElementById('clockDisplay');
-            const duration = 10; // animation duration in seconds
-            const totalHours = 24;
+        document.addEventListener('DOMContentLoaded', function() {
+            // ======== Configuration ========
+            const ANIMATION_DURATION = 30; // 30 seconds = 24 hours in simulation time
+            const TOTAL_HOURS = 24;
+            const ANIMATION_START_TIME = 5; // Animation starts at 05:00
+            const ANIMATION_END_TIME = 22; // Animation ends at 22:00
+            const START_HOUR = 7; // First marker leaves at 07:00
+            const MARKER_COUNT = 10;
+            const MARKER_TRAVEL_TIME = 45; // minutes to travel the whole route
+            const PAUSE_DURATION = 15; // minutes pause at pause points
+            const DEPARTURE_INTERVAL = 2; // hours between markers
+            const FIRST_PAUSE_POSITION = 0.33; // First pause at 33% of the route
+            const SECOND_PAUSE_POSITION = 0.66; // Second pause at 66% of the route
+            const NIGHT_START_HOUR = 18; // 6pm - start of night
+            const NIGHT_END_HOUR = 6; // 6am - end of night
+            const SUNRISE_SUNSET_DURATION = 30; // Duration of sunrise/sunset transition in minutes
+            
+            // Animation speed - default 5x real time
+            let currentSpeedMultiplier = 5;
+            
+            // Convert to simulation time (fraction of 24 hours)
+            const minutesToTimeFraction = (minutes) => minutes / (60 * TOTAL_HOURS);
+            const hoursToTimeFraction = (hours) => hours / TOTAL_HOURS;
+            
+            // Travel fractions
+            const TRAVEL_TIME_FRACTION = minutesToTimeFraction(MARKER_TRAVEL_TIME);
+            const PAUSE_TIME_FRACTION = minutesToTimeFraction(PAUSE_DURATION);
+            
+            let pathLength = 0;
+            let pathElement = null;
+            let svg = document.getElementById('animationSvg');
+            let markersContainer = document.getElementById('markers');
+            let clockElement = document.getElementById('clockDisplay');
             let startTime = null;
             
-            function updateClock(timestamp) {
-                if (!startTime) startTime = timestamp;
-                let elapsedTime = (timestamp - startTime) / 1000; // in seconds
-                
-                // Reset the clock when animation completes one cycle
-                if (elapsedTime > duration) {
-                    startTime = timestamp - (elapsedTime % duration) * 1000;
-                    elapsedTime = elapsedTime % duration;
+            // Load the route SVG
+            loadRoute();
+            
+            // Start the clock
+            startClock();
+            
+            // Set up speed controls
+            setupSpeedControls();
+            
+            // Try to load the external route SVG file
+            function loadRoute() {
+                // Get the default path
+                pathElement = document.getElementById('visualPath');
+                try {
+                    pathLength = pathElement.getTotalLength();
+                } catch (e) {
+                    console.log('Could not get path length, using default value:', e);
+                    pathLength = 1000; // Default approximation
                 }
                 
-                // Calculate current time in 24-hour format
-                const progress = elapsedTime / duration;
-                const totalMinutes = Math.floor(progress * totalHours * 60);
+                try {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', 'assets/route.svg', true);
+                    xhr.onload = function() {
+                        if (xhr.status === 200) {
+                            // Extract path data from loaded SVG
+                            const parser = new DOMParser();
+                            const svgDoc = parser.parseFromString(xhr.responseText, 'image/svg+xml');
+                            const paths = svgDoc.querySelectorAll('path');
+                            
+                            if (paths.length > 0) {
+                                // Use the first path found
+                                const pathData = paths[0].getAttribute('d');
+                                document.getElementById('routePath').setAttribute('d', pathData);
+                                document.getElementById('visualPath').setAttribute('d', pathData);
+                                
+                                // Update path length after loading new path
+                                pathElement = document.getElementById('visualPath');
+                                try {
+                                    pathLength = pathElement.getTotalLength();
+                                } catch (e) {
+                                    console.log('Could not get updated path length:', e);
+                                }
+                                
+                                // Initialize markers after loading path
+                                initializeMarkers();
+                            } else {
+                                console.log('No paths found in SVG, using default');
+                                initializeMarkers();
+                            }
+                        } else {
+                            console.log('Failed to load route SVG, using default');
+                            initializeMarkers();
+                        }
+                    };
+                    xhr.onerror = function() {
+                        console.log('Error loading route SVG, using default');
+                        initializeMarkers();
+                    };
+                    xhr.send();
+                } catch (e) {
+                    console.log('Exception loading route:', e);
+                    initializeMarkers();
+                }
+            }
+            
+            function initializeMarkers() {
+                // Clear any existing markers
+                markersContainer.innerHTML = '';
+                
+                // Create the markers
+                for (let i = 0; i < MARKER_COUNT; i++) {
+                    const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    marker.setAttribute("cx", "0");
+                    marker.setAttribute("cy", "0");
+                    marker.setAttribute("r", "8.5");
+                    marker.setAttribute("fill", "#005EB8");
+                    marker.setAttribute("stroke", "white");
+                    marker.setAttribute("stroke-width", "2");
+                    marker.setAttribute("id", `marker-${i}`);
+                    marker.setAttribute("visibility", "hidden"); // Initially hidden
+                    
+                    markersContainer.appendChild(marker);
+                }
+            }
+            
+            // Update marker positions based on current time
+            function updateMarkers(simulationTimeFraction) {
+                // Convert to hours for easier calculations
+                const simulationTimeHours = simulationTimeFraction * TOTAL_HOURS;
+                
+                for (let i = 0; i < MARKER_COUNT; i++) {
+                    const marker = document.getElementById(`marker-${i}`);
+                    if (!marker) continue;
+                    
+                    // Calculate when this marker starts (in hours)
+                    const markerStartTimeHours = START_HOUR + (i * DEPARTURE_INTERVAL);
+                    
+                    // Check if marker has started its journey
+                    if (simulationTimeHours < markerStartTimeHours) {
+                        marker.setAttribute("visibility", "hidden");
+                        continue;
+                    }
+                    
+                    // Calculate how long this marker has been traveling (in hours)
+                    let markerTravelTimeHours = simulationTimeHours - markerStartTimeHours;
+                    
+                    // Handle wrap-around for multi-day simulation
+                    while (markerTravelTimeHours > TOTAL_HOURS) {
+                        markerTravelTimeHours -= TOTAL_HOURS;
+                    }
+                    
+                    // Convert to time fraction
+                    const markerTravelTime = hoursToTimeFraction(markerTravelTimeHours);
+                    
+                    // Convert travel time to path position accounting for pauses
+                    let pathPosition = calculatePathPosition(markerTravelTime);
+                    
+                    // If journey complete, hide marker
+                    const journeyTime = TRAVEL_TIME_FRACTION + (2 * PAUSE_TIME_FRACTION);
+                    if (markerTravelTime > journeyTime) {
+                        marker.setAttribute("visibility", "hidden");
+                        continue;
+                    }
+                    
+                    // Show marker and set position
+                    marker.setAttribute("visibility", "visible");
+                    
+                    // Get point coordinates at position
+                    if (pathElement) {
+                        try {
+                            const point = pathElement.getPointAtLength(pathLength * pathPosition);
+                            marker.setAttribute("cx", point.x);
+                            marker.setAttribute("cy", point.y);
+                        } catch (e) {
+                            console.log('Error getting point on path:', e);
+                        }
+                    }
+                }
+            }
+            
+            // Calculate path position accounting for pauses
+            function calculatePathPosition(timeFraction) {
+                // Total travel time including pauses
+                const totalTravelTime = TRAVEL_TIME_FRACTION + (2 * PAUSE_TIME_FRACTION);
+                
+                if (timeFraction >= totalTravelTime) {
+                    return 1.0; // Completed journey
+                }
+                
+                // Time at which marker reaches first pause point
+                const firstPauseTime = TRAVEL_TIME_FRACTION * FIRST_PAUSE_POSITION;
+                
+                // Time at which marker finishes first pause
+                const afterFirstPauseTime = firstPauseTime + PAUSE_TIME_FRACTION;
+                
+                // Time at which marker reaches second pause point (adjusted for first pause)
+                const secondPausePosition = FIRST_PAUSE_POSITION + 
+                    (SECOND_PAUSE_POSITION - FIRST_PAUSE_POSITION);
+                const secondPauseTime = (TRAVEL_TIME_FRACTION * secondPausePosition) + PAUSE_TIME_FRACTION;
+                
+                // Time at which marker finishes second pause
+                const afterSecondPauseTime = secondPauseTime + PAUSE_TIME_FRACTION;
+                
+                // Calculate path position based on time and pauses
+                if (timeFraction < firstPauseTime) {
+                    // Before first pause - normal progress
+                    return (timeFraction / TRAVEL_TIME_FRACTION) * FIRST_PAUSE_POSITION;
+                } else if (timeFraction < afterFirstPauseTime) {
+                    // During first pause - remain at pause position
+                    return FIRST_PAUSE_POSITION;
+                } else if (timeFraction < secondPauseTime) {
+                    // Between first and second pause - adjusted progress
+                    const progressAfterPause = timeFraction - afterFirstPauseTime;
+                    const segmentDuration = TRAVEL_TIME_FRACTION * (SECOND_PAUSE_POSITION - FIRST_PAUSE_POSITION);
+                    const segmentProgress = progressAfterPause / segmentDuration;
+                    return FIRST_PAUSE_POSITION + segmentProgress * (SECOND_PAUSE_POSITION - FIRST_PAUSE_POSITION);
+                } else if (timeFraction < afterSecondPauseTime) {
+                    // During second pause - remain at second pause position
+                    return SECOND_PAUSE_POSITION;
+                } else {
+                    // After second pause - final segment
+                    const progressAfterSecondPause = timeFraction - afterSecondPauseTime;
+                    const finalSegmentDuration = TRAVEL_TIME_FRACTION * (1 - SECOND_PAUSE_POSITION);
+                    const finalSegmentProgress = progressAfterSecondPause / finalSegmentDuration;
+                    return SECOND_PAUSE_POSITION + finalSegmentProgress * (1 - SECOND_PAUSE_POSITION);
+                }
+            }
+            
+            // Update the clock display based on time fraction
+            function updateClockDisplay(timeFraction) {
+                const totalMinutes = Math.floor(timeFraction * TOTAL_HOURS * 60);
                 const hours = Math.floor(totalMinutes / 60);
                 const minutes = totalMinutes % 60;
                 
-                // Format the time as 00:00
-                const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                // Determine AM/PM
+                const period = hours >= 12 ? 'pm' : 'am';
+                
+                // Convert to 12-hour format
+                const hours12 = hours % 12 || 12;
+                
+                // Format the time without leading zero for hours
+                const timeString = `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
                 clockElement.textContent = timeString;
                 
-                requestAnimationFrame(updateClock);
+                // Update night overlay
+                updateNightOverlay(hours, minutes);
             }
             
-            requestAnimationFrame(updateClock);
-        }
-        
-        // Start the animation immediately
-        document.addEventListener('DOMContentLoaded', function() {
-            startClock();
-            loadRoute();
+            // Update the night overlay based on current hour
+            function updateNightOverlay(hour, minutes) {
+                const nightOverlay = document.getElementById('nightOverlay');
+                const transitionMinutes = SUNRISE_SUNSET_DURATION;
+                
+                // Calculate how far into sunrise/sunset transition we are
+                let opacity = 0;
+                
+                // Check for sunset transition (approaching night)
+                if (hour === NIGHT_START_HOUR) {
+                    // Calculate opacity based on minutes into the transition
+                    opacity = Math.min(minutes / transitionMinutes, 1);
+                }
+                // Check for sunrise transition (approaching day)
+                else if (hour === NIGHT_END_HOUR) {
+                    // Calculate opacity based on minutes into the transition (decreasing)
+                    opacity = Math.max(1 - (minutes / transitionMinutes), 0);
+                }
+                // Full night
+                else if ((hour > NIGHT_START_HOUR) || (hour < NIGHT_END_HOUR)) {
+                    opacity = 1;
+                }
+                
+                // Set the opacity
+                nightOverlay.setAttribute('opacity', opacity.toString());
+            }
+            
+            // Update clock function
+            function startClock() {
+                requestAnimationFrame(updateAnimation);
+            }
+            
+            // Main animation update function
+            function updateAnimation(timestamp) {
+                if (!startTime) startTime = timestamp;
+                
+                // Calculate elapsed time based on speed multiplier
+                const scaledElapsed = (timestamp - startTime) * currentSpeedMultiplier / 10;
+                let elapsedTime = scaledElapsed / 1000; // in seconds
+                
+                // Reset when animation completes one cycle
+                if (elapsedTime > ANIMATION_DURATION) {
+                    // Calculate the excess time to maintain continuity across cycles
+                    const excessTime = elapsedTime % ANIMATION_DURATION;
+                    // Set startTime to account for the excess, maintaining animation position
+                    startTime = timestamp - ((excessTime * 1000) / (currentSpeedMultiplier / 10));
+                    elapsedTime = excessTime;
+                }
+                
+                // Map elapsed time (0 to ANIMATION_DURATION) to simulation time range (ANIMATION_START_TIME to ANIMATION_END_TIME)
+                const elapsedFraction = elapsedTime / ANIMATION_DURATION;
+                const timeRangeInHours = (ANIMATION_END_TIME < ANIMATION_START_TIME) ? 
+                                         (ANIMATION_END_TIME + 24 - ANIMATION_START_TIME) : 
+                                         (ANIMATION_END_TIME - ANIMATION_START_TIME);
+                
+                const simulationTimeHours = ANIMATION_START_TIME + (elapsedFraction * timeRangeInHours);
+                // Normalize to 0-24 range
+                const normalizedHours = simulationTimeHours % 24;
+                
+                // Convert to time fraction (0-1) for the full day
+                const timeFraction = normalizedHours / TOTAL_HOURS;
+                
+                // Update the clock display
+                updateClockDisplay(timeFraction);
+                
+                // Update marker positions
+                updateMarkers(timeFraction);
+                
+                // Continue animation
+                requestAnimationFrame(updateAnimation);
+            }
+            
+            // Set up speed control buttons
+            function setupSpeedControls() {
+                const speedButtons = document.querySelectorAll('.speed-button');
+                
+                speedButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        console.log('Speed button clicked:', this.getAttribute('data-speed'));
+                        
+                        // Get the speed multiplier from data attribute
+                        const speedMultiplier = parseInt(this.getAttribute('data-speed'), 10);
+                        
+                        // Store the current animation state before changing speed
+                        if (startTime !== null) {
+                            // Get current performance timestamp
+                            const currentTimestamp = performance.now();
+                            
+                            // Calculate how much time has passed in the animation at the current speed
+                            const elapsedAtCurrentSpeed = (currentTimestamp - startTime) * currentSpeedMultiplier / 10;
+                            
+                            // Set startTime to maintain the current position in the animation
+                            startTime = currentTimestamp - (elapsedAtCurrentSpeed / (speedMultiplier / 10));
+                        }
+                        
+                        // Update current speed
+                        currentSpeedMultiplier = speedMultiplier;
+                        
+                        // Update selected state
+                        speedButtons.forEach(btn => btn.classList.remove('selected'));
+                        this.classList.add('selected');
+                    });
+                });
+            }
         });
     </script>
 </body>
