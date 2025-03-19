@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>24 Hour Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+        }
+        .animation-container {
+            width: 100%;
+            max-width: 1400px;
+            height: auto;
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="animation-container">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1000" id="animationSvg">
+            <defs>
+                <!-- Define a path for the animation -->
+                <path id="routePath" d="M100,500 C200,300 400,300 500,500 S800,700 900,500 S1200,300 1300,500" fill="none" stroke="none" />
+                
+                <!-- Define a marker for the moving object -->
+                <circle id="movingObject" cx="0" cy="0" r="10" fill="red" />
+            </defs>
+            
+            <!-- Background image -->
+            <image href="assets/map.png" width="1400" height="1000" x="0" y="0" preserveAspectRatio="xMidYMid slice" />
+            
+            <!-- Path visualization (visible to show route) -->
+            <path id="visualPath" d="M100,500 C200,300 400,300 500,500 S800,700 900,500 S1200,300 1300,500" fill="none" stroke="#16A34A" stroke-width="4" opacity="1" />
+            
+            <!-- Clock display in top right corner -->
+            <rect x="1250" y="30" width="120" height="60" rx="10" fill="rgba(0,0,0,0.7)" />
+            <text id="clockDisplay" x="1310" y="70" font-family="Arial" font-size="32" fill="white" text-anchor="middle">00:00</text>
+            
+            <!-- Moving object that will animate along the path -->
+            <circle id="animatedObject" cx="0" cy="0" r="8.5" fill="#005EB8" stroke="white" stroke-width="2">
+                <animateMotion id="moveAnimation" 
+                              dur="10s" 
+                              repeatCount="indefinite" 
+                              begin="0s"
+                              path="M100,500 C200,300 400,300 500,500 S800,700 900,500 S1200,300 1300,500" />
+            </circle>
+            <!-- Transparent PNG overlay on top of everything -->
+            <image href="assets/markers.png" id="markersOverlay" width="1400" height="1000" x="0" y="0" preserveAspectRatio="xMidYMid slice" />
+        </svg>
+    </div>
+
+    <script>
+        // Update markers overlay with the actual image
+        document.getElementById('markersOverlay').setAttribute('href', 'assets/markers.png');
+        
+        // Try to load the external route SVG file
+        function loadRoute() {
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', 'assets/route.svg', true);
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        // Extract path data from loaded SVG
+                        const parser = new DOMParser();
+                        const svgDoc = parser.parseFromString(xhr.responseText, 'image/svg+xml');
+                        const paths = svgDoc.querySelectorAll('path');
+                        
+                        if (paths.length > 0) {
+                            // Use the first path found
+                            const pathData = paths[0].getAttribute('d');
+                            document.getElementById('routePath').setAttribute('d', pathData);
+                            document.getElementById('visualPath').setAttribute('d', pathData);
+                            
+                            // Update animation path
+                            const animatedObject = document.getElementById('animatedObject');
+                            const animateMotion = animatedObject.querySelector('animateMotion');
+                            animateMotion.setAttribute('path', pathData);
+                            
+                            // Restart animation after loading the path
+                            animateMotion.beginElement();
+                        }
+                    }
+                };
+                xhr.send();
+            } catch (e) {
+                console.log('Error loading route:', e);
+                // Animation will continue with default path
+            }
+        }
+        
+        // Update clock function
+        function startClock() {
+            const clockElement = document.getElementById('clockDisplay');
+            const duration = 10; // animation duration in seconds
+            const totalHours = 24;
+            let startTime = null;
+            
+            function updateClock(timestamp) {
+                if (!startTime) startTime = timestamp;
+                let elapsedTime = (timestamp - startTime) / 1000; // in seconds
+                
+                // Reset the clock when animation completes one cycle
+                if (elapsedTime > duration) {
+                    startTime = timestamp - (elapsedTime % duration) * 1000;
+                    elapsedTime = elapsedTime % duration;
+                }
+                
+                // Calculate current time in 24-hour format
+                const progress = elapsedTime / duration;
+                const totalMinutes = Math.floor(progress * totalHours * 60);
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                
+                // Format the time as 00:00
+                const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                clockElement.textContent = timeString;
+                
+                requestAnimationFrame(updateClock);
+            }
+            
+            requestAnimationFrame(updateClock);
+        }
+        
+        // Start the animation immediately
+        document.addEventListener('DOMContentLoaded', function() {
+            startClock();
+            loadRoute();
+        });
+    </script>
+</body>
+</html>
